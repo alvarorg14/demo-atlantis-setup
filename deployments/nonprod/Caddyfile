@@ -1,0 +1,26 @@
+# Caddy reverse proxy for Atlantis NoPRO.
+# Terminates TLS with an automatically managed Let's Encrypt certificate and
+# forwards to Atlantis on the loopback-only port 4141.
+#
+# Replace the site address with the real DNS name; it must match the hostname
+# in the .env ATLANTIS_ATLANTIS_URL and the GitHub App webhook endpoint.
+
+atlantis-nonprod.alvarorg.com {
+	encode gzip
+
+	# Reverse proxy to the Atlantis container on its loopback-bound port.
+	reverse_proxy atlantis-nonprod:4141 {
+		# Webhooks need the original method, path, body and signature headers.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		# Basic hardening headers.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "no-referrer"
+		-Server
+	}
+}

@@ -1,0 +1,55 @@
+# Atlantis NoPRO runtime stack (hosted in alvarorg14-demo-pre).
+# Deployed by the VM startup script; this file is pushed to Secret Manager as
+# atlantis-nonprod-compose and rendered at /opt/atlantis/compose.yaml.
+#
+# Security notes:
+#   - Atlantis listens on 127.0.0.1:4141 only (port not reachable from outside).
+#   - Caddy terminates TLS on 443 and proxies to Atlantis.
+#   - No Docker socket mount, no root: atlantis runs as uid 100 inside its
+#     container; Caddy needs temporary privileges to bind 443 and drops them.
+#   - Versions are pinned; never floating latest.
+#   - Data persists on the VM's data disk mounted at /etc/atlantis.
+
+name: atlantis-nonprod
+
+services:
+  atlantis:
+    image: ghcr.io/runatlantis/atlantis:v0.48.2
+    container_name: atlantis-nonprod
+    restart: unless-stopped
+    user: "100:100"
+    ports:
+      - "127.0.0.1:4141:4141"
+    env_file: /opt/atlantis/.env
+    volumes:
+      # Persistent data (repos, locks, bolt db) on the dedicated data disk.
+      - /etc/atlantis:/atlantis-data
+      # Server-side repo config, mounted read-only.
+      - /opt/atlantis/repos.yaml:/etc/atlantis/repos.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4141/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # No docker socket, no privileged mode, no additional capabilities.
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.10.2
+    container_name: caddy-nonprod
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"   # ACME HTTP-01 challenge
+    volumes:
+      - /opt/atlantis/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy data (TLS certs) also persisted on the data disk.
+      - /etc/atlantis/caddy:/data
+      - /etc/atlantis/caddy-config:/config
+    depends_on:
+      atlantis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,49 @@
+# Atlantis PRO runtime stack (hosted in alvarorg14-demo-pro).
+# Deployed by the VM startup script; this file is pushed to Secret Manager as
+# atlantis-prod-compose and rendered at /opt/atlantis/compose.yaml.
+#
+# PRO runs the exact same shape as nonprod but with its own identity,
+# credentials, data disk content and stricter Atlantis requirements
+# (plan/apply require GitHub approval).
+
+name: atlantis-prod
+
+services:
+  atlantis:
+    image: ghcr.io/runatlantis/atlantis:v0.48.2
+    container_name: atlantis-prod
+    restart: unless-stopped
+    user: "100:100"
+    ports:
+      - "127.0.0.1:4141:4141"
+    env_file: /opt/atlantis/.env
+    volumes:
+      # Persistent data (repos, locks, bolt db) on the dedicated data disk.
+      - /etc/atlantis:/atlantis-data
+      # Server-side repo config, mounted read-only.
+      - /opt/atlantis/repos.yaml:/etc/atlantis/repos.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4141/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.10.2
+    container_name: caddy-prod
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"   # ACME HTTP-01 challenge
+    volumes:
+      - /opt/atlantis/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /etc/atlantis/caddy:/data
+      - /etc/atlantis/caddy-config:/config
+    depends_on:
+      atlantis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true

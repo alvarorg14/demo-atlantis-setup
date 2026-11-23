@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Startup script for the Atlantis Compute Engine VM (template).
+# Terraform interpolations: TF_VAR_project_id and TF_VAR_env below.
+# Every other $ is escaped as $${...} so it reaches the VM intact.
+#
+# Design:
+#   - Secrets NEVER pass through Terraform: this script fetches them from
+#     Secret Manager at runtime with the VM's own service account.
+#   - Deployment files (compose, Caddyfile, repos.yaml) are also pulled from
+#     Secret Manager so they can be updated without re-creating the VM.
+#   - The same script runs on every boot (google-startup-script): a reboot
+#     re-installs Docker if needed and re-runs compose with restart policies,
+#     preserving the persistent /etc/atlantis data disk.
+
+set -euo pipefail
+
+MOUNT_POINT="/etc/atlantis"
+
+log() { printf '[atlantis-startup] %s\n' "$$*" >&2; }
+export DEBIAN_FRONTEND=noninteractive
+
+# --- Persistent data disk ---------------------------------------------------
+# Format only on first boot; re-mount on every subsequent boot/reboot.
+DISK_DEVICE="/dev/disk/by-id/google-atlantis-data"
+
+if [ ! -d "$${MOUNT_POINT}/repos" ]; then
+  log "Formatting data disk on first boot..."
+  mkfs.ext4 -F "$$DISK_DEVICE"
+  mkdir -p "$$MOUNT_POINT"
+  mount "$$DISK_DEVICE" "$$MOUNT_POINT"
+  mkdir -p "$$MOUNT_POINT"/repos "$$MOUNT_POINT"/locks "$$MOUNT_POINT"/bin "$$MOUNT_POINT"/tf-data
+  # Atlantis runs as uid 100 inside the container: give it the data dir.
+  chown -R 100:100 "$$MOUNT_POINT"
+else
+  log "Data disk already formatted, mounting..."
+  mount "$$DISK_DEVICE" "$$MOUNT_POINT" || true
+fi
+
+# fstab entry (idempotent) so the disk mounts on every boot even before compose.
+if ! grep -q "$$DISK_DEVICE" /etc/fstab; then
+  echo "$$DISK_DEVICE $$MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+fi
+
+# --- Docker Engine + Compose -------------------------------------------------
+if ! command -v docker >/dev/null 2>&1; then
+  log "Installing Docker Engine + Compose from the official repository..."
+  apt-get update -qq
+  apt-get install -y -qq ca-certificates curl gnupg
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && printf '%s' \"\$VERSION_CODENAME\") stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update -qq
+  apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+else
+  log "Docker already present, enabling..."
+  systemctl enable --now docker || true
+fi
+
+# --- Pull deployment files and credentials from Secret Manager ---------------
+# Access control is the VM GSA via roles/secretmanager.secretAccessor, bound
+# per-secret by Terraform.
+fetch() {
+  local name="$$1" dest="$$2"
+  log "Fetching secret $${name}..."
+  gcloud secrets versions access latest \
+    --project="$(curl -s -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/project/project-id')" \
+    --secret="$$name" \
+    > "$$dest"
+  chmod 600 "$$dest"
+}
+
+mkdir -p /opt/atlantis
+fetch "atlantis-${env}-env-file"   /opt/atlantis/.env
+fetch "atlantis-${env}-compose"    /opt/atlantis/compose.yaml
+fetch "atlantis-${env}-repos-yaml" /opt/atlantis/repos.yaml
+fetch "atlantis-${env}-caddyfile"  /opt/atlantis/Caddyfile
+chmod 644 /opt/atlantis/compose.yaml /opt/atlantis/repos.yaml /opt/atlantis/Caddyfile
+
+cd /opt/atlantis
+
+# --- Start the stack ---------------------------------------------------------
+# 'docker compose up -d' is idempotent: on reboot it recreates only what is
+# missing and the restart policies keep containers alive.
+log "Starting Atlantis + Caddy via docker compose..."
+docker compose --env-file /opt/atlantis/.env -f /opt/atlantis/compose.yaml up -d --remove-orphans
+
+log "Startup complete. Atlantis listens on 127.0.0.1:4141 behind Caddy (HTTPS 443)."

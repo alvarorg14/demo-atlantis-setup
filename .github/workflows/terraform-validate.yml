@@ -1,0 +1,86 @@
+name: Terraform Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "**.tf"
+      - "deployments/**"
+      - "bootstrap/**"
+      - "scripts/**"
+      - ".github/workflows/terraform-validate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-fmt:
+    name: terraform fmt -check -recursive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: fmt check
+        run: terraform fmt -check -recursive .
+
+  terraform-validate:
+    name: terraform init/validate (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, pre, pro]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: init (no backend)
+        working-directory: environments/${{ matrix.env }}
+        run: terraform init -backend=false
+      - name: validate
+        working-directory: environments/${{ matrix.env }}
+        # bucket_suffix has a default (atl); CI never touches real GCP.
+        run: terraform validate
+
+  yaml-lint:
+    name: YAML validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all YAML files
+        run: |
+          set -euo pipefail
+          # Deployment YAML uses <GITHUB_OWNER> placeholders; python yaml parse
+          # is enough (no schema assumptions).
+          find . -name "*.yaml" -o -name "*.yml" | while read -r f; do
+            python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$f" \
+              || { echo "Invalid YAML: $f"; exit 1; }
+            echo "OK $f"
+          done
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          set -euo pipefail
+          find . -name "*.sh" -type f | while read -r f; do
+            shellcheck -x "$f" || { echo "shellcheck failed: $f"; exit 1; }
+            echo "OK $f"
+          done
+
+  security-scan:
+    name: tfsec (optional static security scan)
+    runs-on: ubuntu-latest
+    continue-on-error: true   # advisory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: .

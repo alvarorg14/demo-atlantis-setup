@@ -1,0 +1,31 @@
+# Atlantis PRO — server-side repo configuration.
+# Mounted read-only at /etc/atlantis/repos.yaml and passed to Atlantis via
+# ATLANTIS_REPO_CONFIG.
+#
+# This server manages ONLY the demo-atlantis-gsa repository, ONLY its declared
+# prod project (pro-gsas — see atlantis-prod.yaml in that repository), and
+# ONLY on the main branch. Plans AND applies require a GitHub approval.
+#
+# The matching server flags (set in the .env secret):
+#   ATLANTIS_REPO_ALLOWLIST=github.com/alvarorg14/demo-atlantis-gsa
+#   ATLANTIS_EXECUTABLE_NAME=atlantis-prod
+#   ATLANTIS_SILENCE_NO_PROJECTS=true
+#   ATLANTIS_ALLOW_FORK_PRS=false
+#   ATLANTIS_DISABLE_APPLY_ALL=true
+
+repos:
+  - id: github.com/alvarorg14/demo-atlantis-gsa
+    branch: /^main$/
+
+    repo_config_file: atlantis-prod.yaml
+
+    plan_requirements:
+      - approved
+
+    apply_requirements:
+      - approved
+      - mergeable
+      - undiverged
+
+    allowed_overrides: []
+    allow_custom_workflows: false
