@@ -15,8 +15,8 @@ Estimated time: ~1 hour (plus DNS propagation and one reboot).
 | Terraform `1.17.2` | `terraform version` (use [tfenv](https://github.com/tfutils/tfenv): `tfenv install`) |
 | `jq`, `curl`, `openssl` | `command -v jq curl openssl` |
 | Three GCP projects with billing | `gcloud projects describe alvarorg14-demo-dev` (and `-pre`, `-pro`) |
-| DNS control of `alvarorg.com` | you will add two A records in step 7 |
-| GitHub org/user admin | to create two GitHub Apps in step 8 |
+| DNS control of `alvarorg.com` | you will add two A records in step 6 |
+| GitHub org/user admin | to create two GitHub Apps in step 7 |
 
 Your identity needs, **in all three projects**: service account + IAM admin,
 storage admin, Compute admin, Secret Manager admin, and (pre/pro) network
@@ -27,6 +27,14 @@ covers all of it — the *demo identities themselves* never get these roles
 ```bash
 # Set your operator identity once; gcloud picks it up for everything below.
 gcloud config set account <your-admin@example.com>
+```
+
+Enable the APIs used by the PRE and PRO VMs (API activation can take a few
+minutes to propagate):
+
+```bash
+gcloud services enable compute.googleapis.com secretmanager.googleapis.com --project=alvarorg14-demo-pre
+gcloud services enable compute.googleapis.com secretmanager.googleapis.com --project=alvarorg14-demo-pro
 ```
 
 Bucket names are fixed (`alvarorg14-terraform-state-{dev,pre,pro}` and
@@ -60,7 +68,7 @@ commands. No errors.
 
 This creates: `atlantis-nonprod` VM + runtime GSA, `terraform-gsas-pre`
 runner, `alvarorg14-terraform-state-gsa-pre` bucket, NoPRO→PRE TokenCreator,
-9 Secret Manager secrets, network + firewall rules.
+7 Secret Manager secrets, network + firewall rules.
 
 ✅ Check:
 
@@ -70,7 +78,7 @@ cd environments/pre && terraform output && cd ../..
 ```
 
 Wait ~3–5 minutes after apply: the VM boots, installs Docker, pulls secrets
-and starts the containers. (It will fail the compose step until step 5 fills
+and starts the containers. (It will fail the compose step until steps 5 and 7 fill
 the secrets — that's expected.)
 
 ---
@@ -116,6 +124,13 @@ cd environments/dev && terraform output && cd ../..
 
 The VMs poll these secrets on boot; they are NOT in Terraform.
 
+If you applied an earlier revision, run and review `./scripts/deploy.sh plan pre`
+and `./scripts/deploy.sh plan pro`, then apply both before continuing. The plans
+remove the obsolete `gh-user` and `gh-token` secrets and their versions, update
+the startup script, and open port 80 for certificate validation. Export anything
+you need from the old secrets before applying. Upload the updated Compose files
+below before restarting the VMs.
+
 ### 5a. Edit the env files
 
 ```bash
@@ -124,6 +139,9 @@ cp deployments/prod/.env.example   /tmp/prod.env
 # Edit both: set your GitHub org/user in ATLANTIS_REPO_ALLOWLIST
 # (alvarorg14 by default). Hostnames are already correct (alvarorg.com).
 ```
+
+Keep `ATLANTIS_WRITE_GIT_CREDS=true` in both files. Atlantis requires it
+to clone repositories using the GitHub App installation credentials.
 
 ### 5b. Push config files
 
@@ -141,84 +159,38 @@ gcloud secrets versions add atlantis-prod-repos-yaml    --project=alvarorg14-dem
 gcloud secrets versions add atlantis-prod-caddyfile     --project=alvarorg14-demo-pro --data-file=deployments/prod/Caddyfile
 ```
 
-✅ Check: `gcloud secrets list --project=alvarorg14-demo-pre` shows 9 secrets
-(4 config + 5 GitHub, next step).
+✅ Check: `gcloud secrets list --project=alvarorg14-demo-pre` shows 7 secrets
+(4 config + 3 GitHub App secrets).
 
-### 5c. Generate and push GitHub App credentials
+### 5c. Generate webhook secrets
 
-Do this now; you'll plug the same values into GitHub in step 8.
+Keep these files for the GitHub App setup in step 7:
 
 ```bash
-# --- NoPRO app ---
 openssl rand -hex 32 > /tmp/noprod-webhook-secret.txt
-gcloud secrets versions add atlantis-nonprod-gh-webhook-secret --project=alvarorg14-demo-pre --data-file=/tmp/noprod-webhook-secret.txt
-
-# APP_ID and the private key come from GitHub in step 8; come back here after:
-gcloud secrets versions add atlantis-nonprod-gh-app-id  --project=alvarorg14-demo-pre --data-file=<(echo -n "<APP_ID>")
-gcloud secrets versions add atlantis-nonprod-gh-app-key --project=alvarorg14-demo-pre --data-file=<path-to-app.pem>
-gcloud secrets versions add atlantis-nonprod-gh-user    --project=alvarorg14-demo-pre --data-file=<(echo -n "<GH_API_USER>")
-gcloud secrets versions add atlantis-nonprod-gh-token   --project=alvarorg14-demo-pre --data-file=<(echo -n "<GH_API_TOKEN>")
-
-# --- PRO app (same shape) ---
 openssl rand -hex 32 > /tmp/prod-webhook-secret.txt
+chmod 600 /tmp/noprod-webhook-secret.txt /tmp/prod-webhook-secret.txt
+
+gcloud secrets versions add atlantis-nonprod-gh-webhook-secret --project=alvarorg14-demo-pre --data-file=/tmp/noprod-webhook-secret.txt
 gcloud secrets versions add atlantis-prod-gh-webhook-secret --project=alvarorg14-demo-pro --data-file=/tmp/prod-webhook-secret.txt
-gcloud secrets versions add atlantis-prod-gh-app-id  --project=alvarorg14-demo-pro --data-file=<(echo -n "<APP_ID>")
-gcloud secrets versions add atlantis-prod-gh-app-key --project=alvarorg14-demo-pro --data-file=<path-to-app.pem>
-gcloud secrets versions add atlantis-prod-gh-user    --project=alvarorg14-demo-pro --data-file=<(echo -n "<GH_API_USER>")
-gcloud secrets versions add atlantis-prod-gh-token   --project=alvarorg14-demo-pro --data-file=<(echo -n "<GH_API_TOKEN>")
 ```
 
----
+## Step 6 — DNS
 
-## Step 6 — Reboot both VMs (or re-run startup)
-
-The startup script runs on every boot and re-fetches secrets + starts compose.
-
-```bash
-gcloud compute instances stop atlantis-nonprod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pre \
-  && gcloud compute instances start atlantis-nonprod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pre
-
-gcloud compute instances stop atlantis-prod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pro \
-  && gcloud compute instances start atlantis-prod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pro
-```
-
-✅ Check (after ~3 min):
-
-```bash
-gcloud compute ssh atlantis-nonprod-vm --tunnel-through-iap --project=alvarorg14-demo-pre --command="sudo docker ps --format '{{.Names}} {{.Status}}'"
-gcloud compute ssh atlantis-prod-vm    --tunnel-through-iap --project=alvarorg14-demo-pro --command="sudo docker ps --format '{{.Names}} {{.Status}}'"
-# Expect: atlantis-nonprod + caddy-nonprod (and prod twins) Up / healthy
-```
-
----
-
-## Step 7 — DNS
-
-Point both hostnames at the VM public IPs (A records):
+Create A records pointing at the VM public IPs:
 
 ```text
-atlantis-nonprod.alvarorg.com  ->  <atlantis_nonprod_public_ip from step 2>
-atlantis-prod.alvarorg.com     ->  <atlantis_prod_public_ip from step 4>
+atlantis-nonprod.alvarorg.com  ->  <atlantis_nonprod_public_ip>
+atlantis-prod.alvarorg.com     ->  <atlantis_prod_public_ip>
 ```
 
-Caddy fetches Let's Encrypt certificates automatically on first request
-(HTTP-01; ports 80+443 are open in the firewall).
+For Cloudflare, use DNS only (grey cloud) initially. These IPs are ephemeral:
+check the records after stopping and starting a VM. Caddy obtains certificates
+when the stack starts; ports 80 and 443 must be reachable.
 
-✅ Check (after DNS propagates, ~minutes):
+## Step 7 — Create and install the two GitHub Apps
 
-```bash
-curl -I https://atlantis-nonprod.alvarorg.com   # expect HTTP 200/302/401
-curl -I https://atlantis-prod.alvarorg.com
-```
-
-If you get a certificate error, wait a minute and retry — issuance takes a
-few seconds after DNS resolves.
-
----
-
-## Step 8 — Create and install the two GitHub Apps
-
-For each App (Settings → Developer settings → GitHub Apps → **New GitHub App**):
+Create each App under Settings → Developer settings → GitHub Apps → **New GitHub App**:
 
 | Setting | `demo-atlantis-nonprod` | `demo-atlantis-prod` |
 |---|---|---|
@@ -229,20 +201,41 @@ For each App (Settings → Developer settings → GitHub Apps → **New GitHub A
 | Permissions | Repository: Administration (r), Contents (r), Pull requests (rw), Commit statuses (rw), Issues (rw) | same |
 | Subscribe to | Pull request, Issue comment, Push | same |
 
-After creating each App:
+Install each App on `demo-atlantis-gsa` only. Upload the App IDs and replace
+the key path placeholders with the locations of your downloaded PEM files:
 
-1. **Generate a private key** → save the `.pem` → push it as the
-   `…-gh-app-key` secret (step 5c, you may already have done this).
-2. Note the **App ID** → push as `…-gh-app-id` secret.
-3. **Install the App** on `demo-atlantis-gsa` **only**.
-4. The API user/token secrets (`…-gh-user`, `…-gh-token`): create a fine
-   grained PAT or use a bot account; it needs read access to
-   `demo-atlantis-gsa` only.
+```bash
+printf '%s' '5894812' | gcloud secrets versions add atlantis-nonprod-gh-app-id --project=alvarorg14-demo-pre --data-file=-
+gcloud secrets versions add atlantis-nonprod-gh-app-key --project=alvarorg14-demo-pre --data-file=/path/to/nonprod-app.pem
 
-✅ Check: in the App settings → Advanced, the webhook shows green ✓ deliveries
-after the next PR.
+printf '%s' '5894912' | gcloud secrets versions add atlantis-prod-gh-app-id --project=alvarorg14-demo-pro --data-file=-
+gcloud secrets versions add atlantis-prod-gh-app-key --project=alvarorg14-demo-pro --data-file=/path/to/prod-app.pem
+```
 
----
+The Apps authenticate Atlantis; no GitHub username or personal access token is required.
+
+## Step 8 — Restart the VMs
+
+After all seven secrets per environment have versions, restart both VMs so the
+startup script fetches the configuration and App credentials:
+
+```bash
+gcloud compute instances stop atlantis-nonprod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pre \
+  && gcloud compute instances start atlantis-nonprod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pre
+
+gcloud compute instances stop atlantis-prod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pro \
+  && gcloud compute instances start atlantis-prod-vm --zone=europe-southwest1-b --project=alvarorg14-demo-pro
+```
+
+Check the VM IPs again and update DNS if either changed. Once DNS propagates and
+Caddy has obtained certificates, check the endpoints and containers:
+
+```bash
+curl -I https://atlantis-nonprod.alvarorg.com
+curl -I https://atlantis-prod.alvarorg.com
+gcloud compute ssh atlantis-nonprod-vm --zone=europe-southwest1-b --tunnel-through-iap --project=alvarorg14-demo-pre --command="sudo docker ps --format '{{.Names}} {{.Status}}'"
+gcloud compute ssh atlantis-prod-vm --zone=europe-southwest1-b --tunnel-through-iap --project=alvarorg14-demo-pro --command="sudo docker ps --format '{{.Names}} {{.Status}}'"
+```
 
 ## Step 9 — Set up `demo-atlantis-gsa`
 
@@ -352,7 +345,7 @@ echo -n "<new-value>" | gcloud secrets versions add <secret-id> --project=<proje
 
 | Symptom | Fix |
 |---|---|
-| Compose not running after boot | `get-serial-port-output` (above) — usually a missing/empty secret from step 5 |
+| Compose not running after boot | `get-serial-port-output` (above) — check the configuration and GitHub App secrets from steps 5 and 7 |
 | TLS not issued | DNS not propagated yet, or ports 80/443 blocked — `gcloud compute firewall-rules list --project=<project>` |
 | Webhook 403 | `X-Hub-Signature` mismatch: the App's webhook secret ≠ the one in the `…-gh-webhook-secret` secret |
 | `atlantis-nonprod plan` ignored | PR branch isn't `main`, repo not in `ATLANTIS_REPO_ALLOWLIST`, or project not in `atlantis-nonprod.yaml` |
@@ -361,5 +354,6 @@ echo -n "<new-value>" | gcloud secrets versions add <secret-id> --project=<proje
 
 ## Costs
 
-Running 24/7: ~$60/month (2× e2-medium, disks, negligible storage/network).
+Running 24/7: approximately $50–$60/month before tax (2× e2-small,
+disks, public IPs, and light storage/network usage).
 Destroy the environments when not demonstrating (README §15).

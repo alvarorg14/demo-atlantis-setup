@@ -40,7 +40,7 @@ GitHub integration and production isolation.
 │  PRE: alvarorg14-demo-pre             │          │  PRO: alvarorg14-demo-pro             │
 │                                       │          │                                       │
 │  ┌─────────────────────────────────┐  │          │  ┌─────────────────────────────────┐  │
-│  │ VM atlantis-nonprod (e2-medium) │  │          │  │ VM atlantis-prod (e2-medium)    │  │
+│  │ VM atlantis-nonprod (e2-small)  │  │          │  │ VM atlantis-prod (e2-small)     │  │
 │  │  Docker: Atlantis v0.48.2       │  │          │  │  Docker: Atlantis v0.48.2       │  │
 │  │   + Caddy 2.10.2 (TLS :443)     │  │          │  │   + Caddy 2.10.2 (TLS :443)     │  │
 │  │  SA: atlantis-nonprod@…-pre     │  │          │  │  SA: atlantis-prod@…-pro        │  │
@@ -212,8 +212,6 @@ through Terraform variables, VM metadata, startup scripts or state.
 | `atlantis-nonprod-gh-app-id` / `atlantis-prod-gh-app-id` | GitHub App ID | operator, after creating the App |
 | `atlantis-nonprod-gh-app-key` / `atlantis-prod-gh-app-key` | GitHub App private key (PEM) | operator, generated once by GitHub |
 | `atlantis-nonprod-gh-webhook-secret` / `atlantis-prod-gh-webhook-secret` | GitHub App webhook secret | operator (`openssl rand -hex 32`) |
-| `atlantis-nonprod-gh-user` / `atlantis-prod-gh-user` | GitHub API user (e.g. the App slug) | operator |
-| `atlantis-nonprod-gh-token` / `atlantis-prod-gh-token` | GitHub API user token | operator |
 
 Each runtime GSA gets `secretmanager.secretAccessor` **only on its own
 project's secrets** — cross-environment access is impossible by construction.
@@ -233,11 +231,10 @@ GitHub credentials (do the equivalent for `prod` / `alvarorg14-demo-pro`):
 
 ```bash
 echo -n "<APP_ID>"  | gcloud secrets versions add atlantis-nonprod-gh-app-id          --project=alvarorg14-demo-pre --data-file=-
-openssl rand -hex 32 | gcloud secrets versions add atlantis-nonprod-gh-webhook-secret --project=alvarorg14-demo-pre --data-file=-
+openssl rand -hex 32 > /tmp/noprod-webhook-secret.txt
+gcloud secrets versions add atlantis-nonprod-gh-webhook-secret --project=alvarorg14-demo-pre --data-file=/tmp/noprod-webhook-secret.txt
 # download the App private key from GitHub, then:
 gcloud secrets versions add atlantis-nonprod-gh-app-key --project=alvarorg14-demo-pre --data-file=app-private-key.pem
-echo -n "<GH_USER>"  | gcloud secrets versions add atlantis-nonprod-gh-user           --project=alvarorg14-demo-pre --data-file=-
-echo -n "<GH_TOKEN>" | gcloud secrets versions add atlantis-nonprod-gh-token          --project=alvarorg14-demo-pre --data-file=-
 ```
 
 ## 9. GitHub App setup
@@ -366,14 +363,14 @@ cd environments/dev && terraform output && cd ../..
 
 | Resource | Spec | Monthly (approx.) |
 |---|---|---|
-| 2 × e2-medium VM | 1 vCPU / 4 GB | ~$25 each → **~$50** |
+| 2 × e2-small VM | 0.5 shared vCPU / 2 GB each | ~$14.50 each → **~$29** |
 | 2 × 30 GB pd-balanced boot | | ~$2.50 each → ~$5 |
 | 2 × 10 GB pd-balanced data | | ~$1 each → ~$2 |
-| 2 × ephemeral public IP | (free when attached to a running VM) | $0 |
+| 2 × ephemeral public IP | Attached to running VMs | ~$7.30 |
 | 6 × GCS state buckets | < 1 GB total | < $1 |
-| Secret Manager | ~20 secrets, negligible access | < $1 |
+| Secret Manager | 14 secrets with one version each, negligible access | < $1 |
 | Network egress | modest (git clones, terraform downloads) | variable, small |
-| **Total** | | **≈ $60 / month** |
+| **Total** | Light demo traffic, before tax | **~$50–$60 / month** |
 
 Tear down when not demonstrating to avoid charges.
 

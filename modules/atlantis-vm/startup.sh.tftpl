@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Startup script for the Atlantis Compute Engine VM (template).
-# Terraform interpolations: TF_VAR_project_id and TF_VAR_env below.
-# Every other $ is escaped as $${...} so it reaches the VM intact.
+# Terraform interpolates the environment name below.
+# Shell brace expansions are escaped for Terraform.
 #
 # Design:
 #   - Secrets NEVER pass through Terraform: this script fetches them from
@@ -13,32 +13,29 @@
 #     preserving the persistent /etc/atlantis data disk.
 
 set -euo pipefail
+umask 077
 
 MOUNT_POINT="/etc/atlantis"
 
-log() { printf '[atlantis-startup] %s\n' "$$*" >&2; }
+log() { printf '[atlantis-startup] %s\n' "$*" >&2; }
 export DEBIAN_FRONTEND=noninteractive
 
 # --- Persistent data disk ---------------------------------------------------
 # Format only on first boot; re-mount on every subsequent boot/reboot.
 DISK_DEVICE="/dev/disk/by-id/google-atlantis-data"
 
-if [ ! -d "$${MOUNT_POINT}/repos" ]; then
+mkdir -p "$MOUNT_POINT"
+if ! blkid "$DISK_DEVICE" >/dev/null 2>&1; then
   log "Formatting data disk on first boot..."
-  mkfs.ext4 -F "$$DISK_DEVICE"
-  mkdir -p "$$MOUNT_POINT"
-  mount "$$DISK_DEVICE" "$$MOUNT_POINT"
-  mkdir -p "$$MOUNT_POINT"/repos "$$MOUNT_POINT"/locks "$$MOUNT_POINT"/bin "$$MOUNT_POINT"/tf-data
-  # Atlantis runs as uid 100 inside the container: give it the data dir.
-  chown -R 100:100 "$$MOUNT_POINT"
-else
-  log "Data disk already formatted, mounting..."
-  mount "$$DISK_DEVICE" "$$MOUNT_POINT" || true
+  mkfs.ext4 -F "$DISK_DEVICE"
 fi
+mountpoint -q "$MOUNT_POINT" || mount "$DISK_DEVICE" "$MOUNT_POINT"
+mkdir -p "$MOUNT_POINT"/repos "$MOUNT_POINT"/locks "$MOUNT_POINT"/bin "$MOUNT_POINT"/tf-data
+chown 100:100 "$MOUNT_POINT" "$MOUNT_POINT"/repos "$MOUNT_POINT"/locks "$MOUNT_POINT"/bin "$MOUNT_POINT"/tf-data
 
 # fstab entry (idempotent) so the disk mounts on every boot even before compose.
-if ! grep -q "$$DISK_DEVICE" /etc/fstab; then
-  echo "$$DISK_DEVICE $$MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+if ! grep -q "$DISK_DEVICE" /etc/fstab; then
+  echo "$DISK_DEVICE $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
 fi
 
 # --- Docker Engine + Compose -------------------------------------------------
@@ -49,7 +46,7 @@ if ! command -v docker >/dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && printf '%s' \"\$VERSION_CODENAME\") stable" \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && printf '%s' "$VERSION_CODENAME") stable" \
     > /etc/apt/sources.list.d/docker.list
   apt-get update -qq
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -63,13 +60,13 @@ fi
 # Access control is the VM GSA via roles/secretmanager.secretAccessor, bound
 # per-secret by Terraform.
 fetch() {
-  local name="$$1" dest="$$2"
+  local name="$1" dest="$2"
   log "Fetching secret $${name}..."
   gcloud secrets versions access latest \
     --project="$(curl -s -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/project/project-id')" \
-    --secret="$$name" \
-    > "$$dest"
-  chmod 600 "$$dest"
+    --secret="$name" \
+    > "$dest"
+  chmod 600 "$dest"
 }
 
 mkdir -p /opt/atlantis
@@ -77,6 +74,17 @@ fetch "atlantis-${env}-env-file"   /opt/atlantis/.env
 fetch "atlantis-${env}-compose"    /opt/atlantis/compose.yaml
 fetch "atlantis-${env}-repos-yaml" /opt/atlantis/repos.yaml
 fetch "atlantis-${env}-caddyfile"  /opt/atlantis/Caddyfile
+fetch "atlantis-${env}-gh-app-id" /opt/atlantis/gh-app-id
+fetch "atlantis-${env}-gh-webhook-secret" /opt/atlantis/gh-webhook-secret
+fetch "atlantis-${env}-gh-app-key" /opt/atlantis/gh-app-key.pem
+chown 100:100 /opt/atlantis/gh-app-key.pem
+app_id="$(cat /opt/atlantis/gh-app-id)"
+webhook_secret="$(cat /opt/atlantis/gh-webhook-secret)"
+[[ "$app_id" =~ ^[0-9]+$ ]] || { log "Invalid GitHub App ID"; exit 1; }
+[[ "$webhook_secret" =~ ^[a-fA-F0-9]+$ ]] || { log "Webhook secret must be hexadecimal"; exit 1; }
+printf 'ATLANTIS_GH_APP_ID=%s\nATLANTIS_GH_WEBHOOK_SECRET=%s\nATLANTIS_GH_APP_KEY_FILE=/run/secrets/gh-app-key.pem\n' \
+  "$app_id" "$webhook_secret" > /opt/atlantis/github.env
+chmod 600 /opt/atlantis/github.env
 chmod 644 /opt/atlantis/compose.yaml /opt/atlantis/repos.yaml /opt/atlantis/Caddyfile
 
 cd /opt/atlantis

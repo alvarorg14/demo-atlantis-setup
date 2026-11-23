@@ -31,7 +31,7 @@ variable "zone" {
 variable "machine_type" {
   description = "Compute Engine machine type."
   type        = string
-  default     = "e2-medium"
+  default     = "e2-small"
 }
 
 variable "boot_image" {

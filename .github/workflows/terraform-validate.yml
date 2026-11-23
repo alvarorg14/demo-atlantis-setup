@@ -1,6 +1,9 @@
 name: Terraform Validate
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -15,6 +18,20 @@ permissions:
   contents: read
 
 jobs:
+  atlantis-config:
+    name: Validate Atlantis GitHub App configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that GitHub App cloning is enabled
+        run: |
+          for file in deployments/nonprod/.env.example deployments/prod/.env.example; do
+            if ! grep -Fxq 'ATLANTIS_WRITE_GIT_CREDS=true' "$file"; then
+              echo "::error file=$file::Set ATLANTIS_WRITE_GIT_CREDS=true for GitHub App cloning."
+              exit 1
+            fi
+          done
+
   terraform-fmt:
     name: terraform fmt -check -recursive
     runs-on: ubuntu-latest

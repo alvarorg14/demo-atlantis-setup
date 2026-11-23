@@ -16,12 +16,15 @@ services:
     user: "100:100"
     ports:
       - "127.0.0.1:4141:4141"
-    env_file: /opt/atlantis/.env
+    env_file:
+      - /opt/atlantis/.env
+      - /opt/atlantis/github.env
     volumes:
       # Persistent data (repos, locks, bolt db) on the dedicated data disk.
       - /etc/atlantis:/atlantis-data
       # Server-side repo config, mounted read-only.
       - /opt/atlantis/repos.yaml:/etc/atlantis/repos.yaml:ro
+      - /opt/atlantis/gh-app-key.pem:/run/secrets/gh-app-key.pem:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4141/healthz"]
       interval: 30s

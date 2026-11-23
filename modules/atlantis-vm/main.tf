@@ -4,11 +4,11 @@
 #   - VPC network + NAT-less egress (no external IPs needed for egress in
 #     GCP default behaviour; we keep a public IP for the HTTPS endpoint)
 #   - Dedicated runtime GSA (never the default Compute Engine SA)
-#   - Shielded e2-medium VM with Debian 13 (trixie), Docker via startup script
+#   - Shielded e2-small VM with Debian 13 (trixie), Docker via startup script
 #   - Persistent 10 GB data disk mounted at /etc/atlantis
 #   - Secret Manager secrets for env-file, compose.yaml, repos.yaml, Caddyfile
 #     and the instance-specific GitHub credentials
-#   - Firewall: 443 open (HTTPS webhook/dashboard), 4141 NOT exposed,
+#   - Firewall: 80 and 443 open (ACME and HTTPS), 4141 NOT exposed,
 #     IAP-only SSH (35.235.240.0/20)
 #
 # GitHub App credentials (app id, key, webhook secret) are NOT passed as
@@ -40,8 +40,6 @@ locals {
     "atlantis-${var.env}-gh-app-id",
     "atlantis-${var.env}-gh-app-key",
     "atlantis-${var.env}-gh-webhook-secret",
-    "atlantis-${var.env}-gh-user",
-    "atlantis-${var.env}-gh-token",
   ]
 }
 
@@ -73,7 +71,7 @@ resource "google_compute_subnetwork" "this" {
   private_ip_google_access = true
 }
 
-# HTTPS from the world (webhooks + dashboard behind Caddy).
+# HTTP for ACME challenges and HTTPS for webhooks and the dashboard.
 resource "google_compute_firewall" "allow_https" {
   name          = local.fw_allow_https
   project       = var.project_id
@@ -81,7 +79,7 @@ resource "google_compute_firewall" "allow_https" {
   source_ranges = ["0.0.0.0/0"]
   allow {
     protocol = "tcp"
-    ports    = ["443"]
+    ports    = ["80", "443"]
   }
   target_tags = ["atlantis-${var.env}"]
 }
