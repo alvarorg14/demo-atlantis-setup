@@ -19,7 +19,10 @@ services:
     env_file:
       - /opt/atlantis/.env
       - /opt/atlantis/github.env
+    environment:
+      ATLANTIS_DATA_DIR: /atlantis-data
     volumes:
+      - /opt/atlantis/policies:/etc/atlantis/policies:ro
       # Persistent data (repos, locks, bolt db) on the dedicated data disk.
       - /etc/atlantis:/atlantis-data
       # Server-side repo config, mounted read-only.

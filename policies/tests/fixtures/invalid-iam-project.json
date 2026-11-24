@@ -1,0 +1,21 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "google_project_iam_member.example",
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "project": "alvarorg14-demo-dev",
+          "role": "roles/logging.logWriter",
+          "member": "serviceAccount:demo-api-pre@alvarorg14-demo-pre.iam.gserviceaccount.com"
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}

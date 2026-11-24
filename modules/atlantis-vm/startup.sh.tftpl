@@ -74,6 +74,12 @@ fetch "atlantis-${env}-env-file"   /opt/atlantis/.env
 fetch "atlantis-${env}-compose"    /opt/atlantis/compose.yaml
 fetch "atlantis-${env}-repos-yaml" /opt/atlantis/repos.yaml
 fetch "atlantis-${env}-caddyfile"  /opt/atlantis/Caddyfile
+install -d -o root -g root -m 0755 /opt/atlantis/policies
+fetch "atlantis-${env}-policy-rego" /opt/atlantis/policies/gsa.rego.new
+test -s /opt/atlantis/policies/gsa.rego.new || { log "Policy secret is empty"; exit 1; }
+chown root:root /opt/atlantis/policies/gsa.rego.new
+chmod 0644 /opt/atlantis/policies/gsa.rego.new
+mv -f /opt/atlantis/policies/gsa.rego.new /opt/atlantis/policies/gsa.rego
 fetch "atlantis-${env}-gh-app-id" /opt/atlantis/gh-app-id
 fetch "atlantis-${env}-gh-webhook-secret" /opt/atlantis/gh-webhook-secret
 fetch "atlantis-${env}-gh-app-key" /opt/atlantis/gh-app-key.pem

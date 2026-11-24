@@ -1,0 +1,17 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "google_storage_bucket.example",
+      "mode": "managed",
+      "type": "google_compute_instance",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {},
+        "after_unknown": {}
+      }
+    }
+  ]
+}
