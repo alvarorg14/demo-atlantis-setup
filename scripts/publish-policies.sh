@@ -6,9 +6,10 @@ cd "$root"
 # Fetch origin/main before running; repository branch protection supplies review.
 git rev-parse --verify origin/main >/dev/null
 for path in policies scripts/test-policies.sh; do
-  git diff --quiet origin/main -- "$path" && git diff --cached --quiet origin/main -- "$path" || {
-    echo "Policy or tests differ from origin/main; publish reviewed main only." >&2; exit 1;
-  }
+  if ! git diff --quiet origin/main -- "$path" || ! git diff --cached --quiet origin/main -- "$path"; then
+    echo "Policy or tests differ from origin/main; publish reviewed main only." >&2
+    exit 1
+  fi
 done
 [[ -z "$(git ls-files --others --exclude-standard -- policies)" ]] || { echo 'Untracked policy files present' >&2; exit 1; }
 scripts/test-policies.sh
