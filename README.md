@@ -11,7 +11,7 @@ enterprise environment with three separate GCP projects:
 | PRO | `alvarorg14-demo-pro` | Production infrastructure and **Atlantis PRO** |
 
 The second repository, `demo-atlantis-gsa`, contains Terraform configurations
-for creating Google Cloud service accounts **through** Atlantis. This
+for managing Google Cloud service accounts **through** Atlantis. This
 repository provisions the Atlantis platform itself.
 
 Objective: demonstrate least-privilege IAM, service-account impersonation,
@@ -50,14 +50,14 @@ GitHub integration and production isolation.
 │                  ▼                    │          │                  ▼                    │
 │  terraform-gsas-pre@alvarorg14-demo-  │          │  terraform-gsas-pro@alvarorg14-demo-  │
 │  pre.iam.gserviceaccount.com          │          │  pro.iam.gserviceaccount.com          │
-│  (serviceAccountCreator on PRE)       │          │  (serviceAccountCreator on PRO)       │
+│  (serviceAccountAdmin on PRE)         │          │  (serviceAccountAdmin on PRO)         │
 └────────────┬──────────────────────────┘          └──────────────────┬────────────────────┘
              │ impersonates                                           │ impersonates
              ▼                                                        ▼
 ┌───────────────────────────────────────┐          ┌───────────────────────────────────────┐
 │  DEV: alvarorg14-demo-dev             │          │  PRO: alvarorg14-demo-pro             │
 │  terraform-gsas-dev@…-dev             │          │  (same runner as above)               │
-│  (serviceAccountCreator on DEV)       │          │                                       │
+│  (serviceAccountAdmin on DEV)         │          │                                       │
 └───────────────────────────────────────┘          └───────────────────────────────────────┘
 
 State buckets (demo-atlantis-setup, admin/operator only — created by bootstrap):
@@ -94,7 +94,7 @@ demo-atlantis-setup/
 │   └── pro/                    # PRO VM + PRO runner + PRO gsa-state bucket
 │
 ├── modules/
-│   ├── terraform-runner/       # restricted execution GSA + serviceAccountCreator
+│   ├── terraform-runner/       # restricted execution GSA + serviceAccountAdmin
 │   ├── state-bucket/           # versioned, UBLA, PPA-enforced GCS bucket
 │   └── atlantis-vm/            # shielded VM + network + secrets + startup script
 │
@@ -173,13 +173,15 @@ cd environments/pro  && terraform output atlantis_prod_public_ip   && cd ../..
 
 ## 6. IAM permissions matrix
 
-| Identity | Grants | Explicitly denied |
+| Identity | Grants | Not directly granted by this configuration |
 |---|---|---|
-| `terraform-gsas-dev@alvarorg14-demo-dev` | `iam.serviceAccountCreator` on `alvarorg14-demo-dev`; `storage.objectAdmin` on `alvarorg14-terraform-state-gsa-dev` | owner, editor, `iam.serviceAccountAdmin`, `resourcemanager.projectIamAdmin`, project Storage Admin, SA key creation, access to other buckets/projects |
-| `terraform-gsas-pre@alvarorg14-demo-pre` | `iam.serviceAccountCreator` on `alvarorg14-demo-pre`; `storage.objectAdmin` on `alvarorg14-terraform-state-gsa-pre` | same as above |
-| `terraform-gsas-pro@alvarorg14-demo-pro` | `iam.serviceAccountCreator` on `alvarorg14-demo-pro`; `storage.objectAdmin` on `alvarorg14-terraform-state-gsa-pro` | same as above |
+| `terraform-gsas-dev@alvarorg14-demo-dev` | `iam.serviceAccountAdmin` on `alvarorg14-demo-dev`; `storage.objectAdmin` on `alvarorg14-terraform-state-gsa-dev` | owner, editor, `resourcemanager.projectIamAdmin`, project Storage Admin, SA key creation, direct access to other buckets/projects |
+| `terraform-gsas-pre@alvarorg14-demo-pre` | `iam.serviceAccountAdmin` on `alvarorg14-demo-pre`; `storage.objectAdmin` on `alvarorg14-terraform-state-gsa-pre` | same as above |
+| `terraform-gsas-pro@alvarorg14-demo-pro` | `iam.serviceAccountAdmin` on `alvarorg14-demo-pro`; `storage.objectAdmin` on `alvarorg14-terraform-state-gsa-pro` | same as above |
 | `atlantis-nonprod@alvarorg14-demo-pre` (VM SA) | TokenCreator on DEV and PRE runners; `secretmanager.secretAccessor` on its own secrets only | any PRO resource, project IAM administration, bucket access |
 | `atlantis-prod@alvarorg14-demo-pro` (VM SA) | TokenCreator on PRO runner; `secretmanager.secretAccessor` on its own secrets only | any DEV/PRE resource, project IAM administration, bucket access |
+
+Each runner can manage all service accounts and their IAM policies in its project, including the runner and Atlantis identities. This includes granting access to impersonate service accounts.
 
 No service-account JSON keys are created anywhere in this setup; the VMs use
 their attached GSAs, and the Terraform roots use impersonation.
