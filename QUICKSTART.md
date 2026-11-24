@@ -142,6 +142,9 @@ cp deployments/prod/.env.example   /tmp/prod.env
 
 Keep `ATLANTIS_WRITE_GIT_CREDS=true` in both files. Atlantis requires it
 to clone repositories using the GitHub App installation credentials.
+Keep `ATLANTIS_HIDE_PREV_PLAN_COMMENTS=true` and set
+`ATLANTIS_GH_APP_SLUG` to the corresponding GitHub App's slug to collapse
+previous plan-result comments when a new plan is posted.
 
 ### 5b. Push config files
 
