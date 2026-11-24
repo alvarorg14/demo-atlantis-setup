@@ -7,17 +7,28 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "**.tf"
-      - "deployments/**"
-      - "bootstrap/**"
-      - "scripts/**"
-      - ".github/workflows/terraform-validate.yml"
 
 permissions:
   contents: read
 
 jobs:
+  opa-policy-tests:
+    name: opa-policy-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Conftest 0.70.1
+        run: |
+          set -euo pipefail
+          version=0.70.1
+          curl -fsSLO "https://github.com/open-policy-agent/conftest/releases/download/v${version}/conftest_${version}_Linux_x86_64.tar.gz"
+          curl -fsSLO "https://github.com/open-policy-agent/conftest/releases/download/v${version}/checksums.txt"
+          grep "conftest_${version}_Linux_x86_64.tar.gz$" checksums.txt | sha256sum -c -
+          tar -xzf "conftest_${version}_Linux_x86_64.tar.gz" conftest
+          sudo install conftest /usr/local/bin/conftest
+      - name: Validate and test policies
+        run: scripts/test-policies.sh
+
   atlantis-config:
     name: Validate Atlantis GitHub App configuration
     runs-on: ubuntu-latest

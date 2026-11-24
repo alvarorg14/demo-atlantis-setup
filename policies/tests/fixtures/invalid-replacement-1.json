@@ -1,0 +1,18 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "google_service_account.example",
+      "mode": "managed",
+      "type": "google_service_account",
+      "change": {
+        "actions": [
+          "create",
+          "delete"
+        ],
+        "after": {},
+        "after_unknown": {}
+      }
+    }
+  ]
+}

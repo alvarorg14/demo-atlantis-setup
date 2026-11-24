@@ -32,6 +32,7 @@ locals {
     "atlantis-${var.env}-compose",
     "atlantis-${var.env}-repos-yaml",
     "atlantis-${var.env}-caddyfile",
+    "atlantis-${var.env}-policy-rego",
   ]
 
   # Secrets that hold GitHub App credentials, filled manually after the app is

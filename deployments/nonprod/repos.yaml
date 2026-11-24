@@ -24,5 +24,17 @@ repos:
       - mergeable
       - undiverged
 
+    policy_check: true
     allowed_overrides: []
     allow_custom_workflows: false
+
+policies:
+  owners:
+    users:
+      - alvarorg14
+  policy_sets:
+    - name: gsa-guardrails
+      path: /etc/atlantis/policies
+      source: local
+      approve_count: 1
+      prevent_self_approve: true

@@ -1,0 +1,62 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "google_service_account.example",
+      "mode": "managed",
+      "type": "google_service_account",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "account_id": "demo-api-dev",
+          "project": "alvarorg14-demo-dev"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "google_service_account.example",
+      "mode": "managed",
+      "type": "google_service_account",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "account_id": "demo-api-pre",
+          "project": "alvarorg14-demo-pre"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "google_service_account.example",
+      "mode": "managed",
+      "type": "google_service_account",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "account_id": "demo-api-pro",
+          "project": "alvarorg14-demo-pro"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "google_storage_bucket.example",
+      "mode": "managed",
+      "type": "google_storage_bucket",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "after": {},
+        "after_unknown": {}
+      }
+    }
+  ]
+}

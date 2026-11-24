@@ -444,3 +444,7 @@ Terraform provider configuration must **not** be treated as sufficient
 security boundaries on their own: anyone able to open a PR that changes
 Terraform code executes code as the runner identity. Mitigate with branch
 protection, CODEOWNERS, and required approvals.
+
+### Atlantis OPA/Conftest guardrails
+
+See [OPA integration](docs/opa-integration.md) for policy behavior, review, rollout, verification, and controlled PR tests.

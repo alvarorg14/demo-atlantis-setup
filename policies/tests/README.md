@@ -1,0 +1,3 @@
+# Policy tests
+
+Run `scripts/test-policies.sh` from any directory with Conftest 0.70.1 and Python 3. The script compiles the policy on valid plans first and checks that every negative plan yields actual Conftest policy failures, rather than treating execution errors as successful denials. Fixtures are synthetic and need no credentials. They cover all environments, approved roles, no-op, invalid names/projects/principals, unknown and missing IAM values, unauthorized resources, deletions, replacements in both action orders and unsupported actions. Add fixtures named `valid-*.json`, `invalid-*.json` or `forbidden-*.json`.

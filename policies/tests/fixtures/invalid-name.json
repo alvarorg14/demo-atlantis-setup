@@ -1,0 +1,20 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "google_service_account.example",
+      "mode": "managed",
+      "type": "google_service_account",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "account_id": "admin-api",
+          "project": "alvarorg14-demo-dev"
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}

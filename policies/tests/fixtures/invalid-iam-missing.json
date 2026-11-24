@@ -1,0 +1,20 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "google_project_iam_member.example",
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "project": "alvarorg14-demo-dev",
+          "role": "roles/logging.logWriter"
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}
