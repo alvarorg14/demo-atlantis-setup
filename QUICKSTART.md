@@ -29,12 +29,13 @@ covers all of it — the *demo identities themselves* never get these roles
 gcloud config set account <your-admin@example.com>
 ```
 
-Enable the APIs used by the PRE and PRO VMs (API activation can take a few
-minutes to propagate):
+Enable the APIs used by the VMs, service account impersonation, and GSA
+creation (API activation can take a few minutes to propagate):
 
 ```bash
-gcloud services enable compute.googleapis.com secretmanager.googleapis.com --project=alvarorg14-demo-pre
-gcloud services enable compute.googleapis.com secretmanager.googleapis.com --project=alvarorg14-demo-pro
+gcloud services enable iam.googleapis.com iamcredentials.googleapis.com --project=alvarorg14-demo-dev
+gcloud services enable compute.googleapis.com secretmanager.googleapis.com iam.googleapis.com iamcredentials.googleapis.com --project=alvarorg14-demo-pre
+gcloud services enable compute.googleapis.com secretmanager.googleapis.com iam.googleapis.com iamcredentials.googleapis.com --project=alvarorg14-demo-pro
 ```
 
 Bucket names are fixed (`alvarorg14-terraform-state-{dev,pre,pro}` and
