@@ -98,7 +98,8 @@ to Terraform, so `-var=...` works on `plan`/`apply` too if you prefer that
 over the explicit plan file above.
 
 This creates: `terraform-gsas-dev` runner, `alvarorg14-terraform-state-gsa-dev`
-bucket, NoPRO→DEV TokenCreator.
+bucket, NoPRO→DEV TokenCreator, and Project IAM Admin on DEV for the runner.
+The PRE and PRO runners likewise receive Project IAM Admin on their own projects.
 
 ✅ Check:
 
